@@ -4,7 +4,6 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 
-
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
@@ -24,9 +23,8 @@ public class DeleteMessageByMessageIdTest {
     Javalin app;
 
     /**
-     * Before every test, reset the database, restart the Javalin app, and create a new webClient and ObjectMapper
-     * for interacting locally on the web.
-     * @throws InterruptedException
+     * Runs before each test: resets the DB, starts the Javalin server,
+     * and sets up HTTP client and JSON mapper.
      */
     @Before
     public void setUp() throws InterruptedException {
@@ -36,56 +34,52 @@ public class DeleteMessageByMessageIdTest {
         webClient = HttpClient.newHttpClient();
         objectMapper = new ObjectMapper();
         app.start(8080);
-        Thread.sleep(1000);
+        Thread.sleep(1000); // Allow server to initialize
     }
 
+    /**
+     * Shuts down the server after each test case.
+     */
     @After
     public void tearDown() {
         app.stop();
     }
 
-
     /**
-     * Sending an http request to DELETE localhost:8080/messages/1 (message exists)
-     * 
-     * Expected Response:
-     *  Status Code: 200
-     *  Response Body: JSON representation of the message that was deleted
+     * Test case: When deleting a message by ID and the message exists,
+     * the response should return 200 and the deleted message in JSON format.
      */
     @Test
-    public void deleteMessageGivenMessageIdMessageFound() throws IOException, InterruptedException {
+    public void deleteExistingMessageById() throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("http://localhost:8080/messages/1"))
                 .DELETE()
                 .build();
-        HttpResponse response = webClient.send(request, HttpResponse.BodyHandlers.ofString());
-        int status = response.statusCode();
 
-        Assert.assertEquals(200, status);
+        HttpResponse<String> response = webClient.send(request, HttpResponse.BodyHandlers.ofString());
 
-        Message expectedResult = new Message(1, 1, "test message 1", 1669947792);
-        Message actualResult = objectMapper.readValue(response.body().toString(), Message.class);
-        Assert.assertEquals(expectedResult, actualResult);
+        Assert.assertEquals(200, response.statusCode());
+
+        Message expected = new Message(1, 1, "test message 1", 1669947792);
+        Message actual = objectMapper.readValue(response.body(), Message.class);
+
+        Assert.assertEquals(expected, actual);
     }
 
     /**
-     * Sending an http request to DELETE localhost:8080/messages/100 (message does NOT exists)
-     * 
-     * Expected Response:
-     *  Status Code: 200
-     *  Response Body: 
+     * Test case: Attempting to delete a message that does not exist
+     * should still return 200 with an empty response body.
      */
     @Test
-    public void deleteMessageGivenMessageIdMessageNotFound() throws IOException, InterruptedException {
+    public void deleteNonExistentMessageById() throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("http://localhost:8080/messages/100"))
                 .DELETE()
                 .build();
-        HttpResponse response = webClient.send(request, HttpResponse.BodyHandlers.ofString());
-        int status = response.statusCode();
 
-        Assert.assertEquals(200, status);
-        Assert.assertTrue(response.body().toString().isEmpty());
+        HttpResponse<String> response = webClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        Assert.assertEquals(200, response.statusCode());
+        Assert.assertTrue(response.body().isEmpty());
     }
-    
 }

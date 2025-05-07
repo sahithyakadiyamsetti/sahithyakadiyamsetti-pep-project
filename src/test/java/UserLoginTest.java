@@ -18,105 +18,95 @@ import io.javalin.Javalin;
 
 public class UserLoginTest {
 
-    SocialMediaController socialMediaController;
-    HttpClient webClient;
-    ObjectMapper objectMapper;
-    Javalin app;
+    private SocialMediaController controller;
+    private HttpClient client;
+    private ObjectMapper mapper;
+    private Javalin app;
 
     /**
-     * Before every test, reset the database, restart the Javalin app, and create a new webClient and ObjectMapper
-     * for interacting locally on the web.
-     * @throws InterruptedException
+     * Initializes test environment before each case.
+     * Starts the API, configures the HTTP client, and ensures the database is clean.
      */
     @Before
-    public void setUp() throws InterruptedException {
+    public void initializeTestEnvironment() throws InterruptedException {
         ConnectionUtil.resetTestDatabase();
-        socialMediaController = new SocialMediaController();
-        app = socialMediaController.startAPI();
-        webClient = HttpClient.newHttpClient();
-        objectMapper = new ObjectMapper();
+        controller = new SocialMediaController();
+        app = controller.startAPI();
+        client = HttpClient.newHttpClient();
+        mapper = new ObjectMapper();
         app.start(8080);
-        Thread.sleep(1000);
+        Thread.sleep(1000); // Wait to ensure server starts
     }
 
+    /**
+     * Cleans up after each test by stopping the server.
+     */
     @After
-    public void tearDown() {
+    public void shutDownServer() {
         app.stop();
     }
 
     /**
-     * Sending an http request to POST localhost:8080/login with valid username and password
-     * 
-     * Expected Response:
-     *  Status Code: 200
-     *  Response Body: JSON representation of user object
+     * Verifies login works with valid credentials.
+     * Expected outcome: status code 200 and user data returned.
      */
     @Test
-    public void loginSuccessful() throws IOException, InterruptedException {
-        HttpRequest postRequest = HttpRequest.newBuilder()
+    public void shouldLoginSuccessfullyWithValidCredentials() throws IOException, InterruptedException {
+        String requestBody = "{\"username\": \"testuser1\", \"password\": \"password\"}";
+
+        HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("http://localhost:8080/login"))
-                .POST(HttpRequest.BodyPublishers.ofString("{" +
-                        "\"username\": \"testuser1\", " +
-                        "\"password\": \"password\" }"))
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                 .header("Content-Type", "application/json")
                 .build();
-        HttpResponse response = webClient.send(postRequest, HttpResponse.BodyHandlers.ofString());
-        int status = response.statusCode();
 
-        Assert.assertEquals(200, status);
-        ObjectMapper om = new ObjectMapper();
-        Account expectedResult = new Account(1, "testuser1", "password");
-        Account actualResult = om.readValue(response.body().toString(), Account.class);
-        Assert.assertEquals(expectedResult, actualResult);        
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
+        Assert.assertEquals(200, response.statusCode());
+
+        Account expected = new Account(1, "testuser1", "password");
+        Account actual = mapper.readValue(response.body(), Account.class);
+
+        Assert.assertEquals(expected, actual);
     }
 
     /**
-     * Sending an http request to POST localhost:8080/login with invalid username
-     * 
-     * Expected Response:
-     *  Status Code: 401
-     *  Response Body: 
+     * Tests login with a non-existent username.
+     * Expected outcome: status code 401 and an empty response.
      */
     @Test
-    public void loginInvalidUsername() throws IOException, InterruptedException {
-        HttpRequest postRequest = HttpRequest.newBuilder()
+    public void shouldFailLoginWithInvalidUsername() throws IOException, InterruptedException {
+        String requestBody = "{\"username\": \"nonexistentUser\", \"password\": \"password\"}";
+
+        HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("http://localhost:8080/login"))
-                .POST(HttpRequest.BodyPublishers.ofString("{" +
-                        "\"username\": \"testuser404\", " +
-                        "\"password\": \"password\" }"))
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                 .header("Content-Type", "application/json")
                 .build();
-        HttpResponse response = webClient.send(postRequest, HttpResponse.BodyHandlers.ofString());
-        int status = response.statusCode();
 
-        Assert.assertEquals(401, status);
-        Assert.assertEquals("", response.body().toString());
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
+        Assert.assertEquals(401, response.statusCode());
+        Assert.assertTrue(response.body().isEmpty());
     }
-    
 
     /**
-     * Sending an http request to POST localhost:8080/login with invalid password
-     * 
-     * Expected Response:
-     *  Status Code: 401
-     *  Response Body: 
+     * Tests login with an incorrect password.
+     * Expected outcome: status code 401 and no content.
      */
     @Test
-    public void loginInvalidPassword() throws IOException, InterruptedException {
-        HttpRequest postRequest = HttpRequest.newBuilder()
+    public void shouldFailLoginWithIncorrectPassword() throws IOException, InterruptedException {
+        String requestBody = "{\"username\": \"testuser1\", \"password\": \"wrongpass\"}";
+
+        HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("http://localhost:8080/login"))
-                .POST(HttpRequest.BodyPublishers.ofString("{" +
-                        "\"username\": \"testuser1\", " +
-                        "\"password\": \"pass123\" }"))
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                 .header("Content-Type", "application/json")
                 .build();
-        HttpResponse response = webClient.send(postRequest, HttpResponse.BodyHandlers.ofString());
-        int status = response.statusCode();
 
-        Assert.assertEquals(401, status);
-        Assert.assertEquals("", response.body().toString());
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
+        Assert.assertEquals(401, response.statusCode());
+        Assert.assertTrue(response.body().isEmpty());
     }
 }

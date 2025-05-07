@@ -17,126 +17,102 @@ import Util.ConnectionUtil;
 import io.javalin.Javalin;
 
 public class UpdateMessageTextTest {
-    SocialMediaController socialMediaController;
-    HttpClient webClient;
-    ObjectMapper objectMapper;
-    Javalin app;
 
-    /**
-     * Before every test, reset the database, restart the Javalin app, and create a new webClient and ObjectMapper
-     * for interacting locally on the web.
-     * @throws InterruptedException
-     */
+    private SocialMediaController controller;
+    private HttpClient httpClient;
+    private ObjectMapper jsonMapper;
+    private Javalin serverApp;
+
     @Before
-    public void setUp() throws InterruptedException {
+    public void initialize() throws InterruptedException {
         ConnectionUtil.resetTestDatabase();
-        socialMediaController = new SocialMediaController();
-        app = socialMediaController.startAPI();
-        webClient = HttpClient.newHttpClient();
-        objectMapper = new ObjectMapper();
-        app.start(8080);
-        Thread.sleep(1000);
+        controller = new SocialMediaController();
+        serverApp = controller.startAPI();
+        httpClient = HttpClient.newHttpClient();
+        jsonMapper = new ObjectMapper();
+        serverApp.start(8080);
+        Thread.sleep(1000); // Allow server startup time
     }
 
     @After
-    public void tearDown() {
-        app.stop();
+    public void cleanUp() {
+        serverApp.stop();
     }
 
-
     /**
-     * Sending an http request to PATCH localhost:8080/messages/1 (message id exists in db) with successfule message text
-     * 
-     * Expected Response:
-     *  Status Code: 200
-     *  Response Body: JSON representation of the message that was updated
+     * Test updating a message that exists.
+     * Should return updated message with HTTP status 200.
      */
     @Test
-    public void updateMessageSuccessful() throws IOException, InterruptedException {
-        HttpRequest postMessageRequest = HttpRequest.newBuilder()
+    public void shouldUpdateMessageSuccessfully() throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("http://localhost:8080/messages/1"))
-                .method("PATCH", HttpRequest.BodyPublishers.ofString("{"+
-                        "\"message_text\": \"updated message\" }"))
+                .method("PATCH", HttpRequest.BodyPublishers.ofString("{\"message_text\": \"updated message\"}"))
                 .header("Content-Type", "application/json")
                 .build();
-        HttpResponse response = webClient.send(postMessageRequest, HttpResponse.BodyHandlers.ofString());
-        int status = response.statusCode();
 
-        Assert.assertEquals(200, status);        
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
-        ObjectMapper om = new ObjectMapper();
-        Message expectedResult = new Message(1, 1, "updated message", 1669947792);
+        Assert.assertEquals(200, response.statusCode());
 
-        Message actualResult = om.readValue(response.body().toString(), Message.class);
-        Assert.assertEquals(expectedResult, actualResult);
+        Message expected = new Message(1, 1, "updated message", 1669947792);
+        Message actual = jsonMapper.readValue(response.body(), Message.class);
+        Assert.assertEquals(expected, actual);
     }
 
-
     /**
-     * Sending an http request to PATCH localhost:8080/messages/1 (message id does NOT exist in db) 
-     * 
-     * Expected Response:
-     *  Status Code: 400
-     *  Response Body: 
+     * Test updating a non-existent message.
+     * Should return HTTP 400 with no response body.
      */
     @Test
-    public void updateMessageMessageNotFound() throws IOException, InterruptedException {
-        HttpRequest postMessageRequest = HttpRequest.newBuilder()
+    public void shouldReturnBadRequestIfMessageNotFound() throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("http://localhost:8080/messages/2"))
-                .method("PATCH", HttpRequest.BodyPublishers.ofString("{"+
-                        "\"message_text\": \"updated message\" }"))
+                .method("PATCH", HttpRequest.BodyPublishers.ofString("{\"message_text\": \"updated message\"}"))
                 .header("Content-Type", "application/json")
                 .build();
-        HttpResponse response = webClient.send(postMessageRequest, HttpResponse.BodyHandlers.ofString());
-        int status = response.statusCode();
-        
-        Assert.assertEquals(400, status);        
-        Assert.assertTrue(response.body().toString().isEmpty());
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        Assert.assertEquals(400, response.statusCode());
+        Assert.assertTrue(response.body().isEmpty());
     }
 
-
     /**
-     * Sending an http request to PATCH localhost:8080/messages/1 (message text to update is an empty string) 
-     * 
-     * Expected Response:
-     *  Status Code: 400
-     *  Response Body: 
+     * Test updating a message with an empty string.
+     * Should result in HTTP 400 error and no body.
      */
     @Test
-    public void updateMessageMessageStringEmpty() throws IOException, InterruptedException {
-        HttpRequest postMessageRequest = HttpRequest.newBuilder()
+    public void shouldRejectEmptyMessageText() throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("http://localhost:8080/messages/1"))
-                .method("PATCH", HttpRequest.BodyPublishers.ofString("{"+
-                        "\"message_text\": \"\" }"))
+                .method("PATCH", HttpRequest.BodyPublishers.ofString("{\"message_text\": \"\"}"))
                 .header("Content-Type", "application/json")
                 .build();
-        HttpResponse response = webClient.send(postMessageRequest, HttpResponse.BodyHandlers.ofString());
-        int status = response.statusCode();
-        
-        Assert.assertEquals(400, status);        
-        Assert.assertTrue(response.body().toString().isEmpty());
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        Assert.assertEquals(400, response.statusCode());
+        Assert.assertTrue(response.body().isEmpty());
     }
 
-
     /**
-     * Sending an http request to PATCH localhost:8080/messages/1 (message text is too long) 
-     * 
-     * Expected Response:
-     *  Status Code: 400
-     *  Response Body: 
+     * Test updating a message with more than allowed character limit.
+     * Should return HTTP 400 and an empty response.
      */
     @Test
-    public void updateMessageMessageTooLong() throws IOException, InterruptedException {
-        HttpRequest postMessageRequest = HttpRequest.newBuilder()
+    public void shouldRejectMessageExceedingCharacterLimit() throws IOException, InterruptedException {
+        String longMessage = "a".repeat(256); // exceeds typical 255-char limit
+
+        HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("http://localhost:8080/messages/1"))
-                .method("PATCH", HttpRequest.BodyPublishers.ofString("{"+
-                        "\"message_text\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" }"))
+                .method("PATCH", HttpRequest.BodyPublishers.ofString("{\"message_text\": \"" + longMessage + "\"}"))
                 .header("Content-Type", "application/json")
                 .build();
-        HttpResponse response = webClient.send(postMessageRequest, HttpResponse.BodyHandlers.ofString());
-        int status = response.statusCode();
 
-        Assert.assertEquals(400, status);        
-        Assert.assertTrue(response.body().toString().isEmpty());
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        Assert.assertEquals(400, response.statusCode());
+        Assert.assertTrue(response.body().isEmpty());
     }
 }

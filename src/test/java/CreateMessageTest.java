@@ -23,130 +23,110 @@ public class CreateMessageTest {
     Javalin app;
 
     /**
-     * Before every test, reset the database, restart the Javalin app, and create a new webClient and ObjectMapper
-     * for interacting locally on the web.
-     * @throws InterruptedException
+     * Initializes the server, database, and utilities before each test runs.
      */
     @Before
     public void setUp() throws InterruptedException {
-        ConnectionUtil.resetTestDatabase();
+        ConnectionUtil.resetTestDatabase(); // Reset DB to clean state
         socialMediaController = new SocialMediaController();
         app = socialMediaController.startAPI();
         webClient = HttpClient.newHttpClient();
         objectMapper = new ObjectMapper();
         app.start(8080);
-        Thread.sleep(1000);
+        Thread.sleep(1000); // Wait for the server to start
     }
 
+    /**
+     * Stops the API server after each test.
+     */
     @After
     public void tearDown() {
         app.stop();
     }
 
-
-    
-
     /**
-     * Sending an http request to POST localhost:8080/messages with valid message credentials
-     * 
-     * Expected Response:
-     *  Status Code: 200
-     *  Response Body: JSON representation of message object
+     * Test case: Submitting a valid message via POST should return 200 and a JSON message response.
      */
     @Test
     public void createMessageSuccessful() throws IOException, InterruptedException {
-        HttpRequest postMessageRequest = HttpRequest.newBuilder()
+        HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("http://localhost:8080/messages"))
                 .POST(HttpRequest.BodyPublishers.ofString("{"+
-                        "\"posted_by\":1, " +
-                        "\"message_text\": \"hello message\", " +
-                        "\"time_posted_epoch\": 1669947792}"))
+                        "\"posted_by\":1," +
+                        "\"message_text\":\"hello message\"," +
+                        "\"time_posted_epoch\":1669947792}"))
                 .header("Content-Type", "application/json")
                 .build();
-        HttpResponse response = webClient.send(postMessageRequest, HttpResponse.BodyHandlers.ofString());
-        int status = response.statusCode();
-        Assert.assertEquals(200, status);        
 
-        ObjectMapper om = new ObjectMapper();
-        Message expectedResult = new Message(2, 1, "hello message", 1669947792);
-        System.out.println(response.body().toString());
-        Message actualResult = om.readValue(response.body().toString(), Message.class);
-        Assert.assertEquals(expectedResult, actualResult);
+        HttpResponse<String> response = webClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        Assert.assertEquals(200, response.statusCode());
+
+        Message expected = new Message(2, 1, "hello message", 1669947792);
+        Message actual = objectMapper.readValue(response.body(), Message.class);
+
+        Assert.assertEquals(expected, actual);
     }
 
     /**
-     * Sending an http request to POST localhost:8080/messages with empty message
-     * 
-     * Expected Response:
-     *  Status Code: 400
-     *  Response Body: 
+     * Test case: Sending an empty message should result in a 400 Bad Request.
      */
     @Test
-    public void createMessageMessageTextBlank() throws IOException, InterruptedException {
-        HttpRequest postMessageRequest = HttpRequest.newBuilder()
+    public void createMessageWithEmptyText() throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("http://localhost:8080/messages"))
                 .POST(HttpRequest.BodyPublishers.ofString("{"+
-                        "\"posted_by\":1, " +
-                        "\"message_text\": \"\", " +
-                        "\"time_posted_epoch\": 1669947792}"))
+                        "\"posted_by\":1," +
+                        "\"message_text\":\"\"," +
+                        "\"time_posted_epoch\":1669947792}"))
                 .header("Content-Type", "application/json")
                 .build();
-        HttpResponse response = webClient.send(postMessageRequest, HttpResponse.BodyHandlers.ofString());
-        int status = response.statusCode();
 
-        Assert.assertEquals(400, status);        
-        Assert.assertEquals("", response.body().toString());
+        HttpResponse<String> response = webClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        Assert.assertEquals(400, response.statusCode());
+        Assert.assertEquals("", response.body());
     }
-
 
     /**
-     * Sending an http request to POST localhost:8080/messages with message length greater than 255
-     * 
-     * Expected Response:
-     *  Status Code: 400
-     *  Response Body: 
+     * Test case: A message exceeding 254 characters should be rejected with status code 400.
      */
     @Test
-    public void createMessageMessageGreaterThan255() throws IOException, InterruptedException {
-        HttpRequest postMessageRequest = HttpRequest.newBuilder()
+    public void createMessageTooLong() throws IOException, InterruptedException {
+        String longMessage = "a".repeat(255);
+
+        HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("http://localhost:8080/messages"))
                 .POST(HttpRequest.BodyPublishers.ofString("{"+
-                        "\"posted_by\":1, " +
-                        "\"message_text\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", " +
-                        "\"time_posted_epoch\": 1669947792}"))
+                        "\"posted_by\":1," +
+                        "\"message_text\":\"" + longMessage + "\"," +
+                        "\"time_posted_epoch\":1669947792}"))
                 .header("Content-Type", "application/json")
                 .build();
-        HttpResponse response = webClient.send(postMessageRequest, HttpResponse.BodyHandlers.ofString());
-        int status = response.statusCode();
-        
-        Assert.assertEquals(400, status);        
-        Assert.assertEquals("", response.body().toString());
-    }
 
+        HttpResponse<String> response = webClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        Assert.assertEquals(400, response.statusCode());
+        Assert.assertEquals("", response.body());
+    }
 
     /**
-     * Sending an http request to POST localhost:8080/messages with a user id that doesnt exist in db
-     * 
-     * Expected Response:
-     *  Status Code: 400
-     *  Response Body: 
+     * Test case: Attempting to post a message from a non-existent user should return 400.
      */
     @Test
-    public void createMessageUserNotInDb() throws IOException, InterruptedException {
-        HttpRequest postMessageRequest = HttpRequest.newBuilder()
+    public void createMessageWithInvalidUser() throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("http://localhost:8080/messages"))
                 .POST(HttpRequest.BodyPublishers.ofString("{"+
-                        "\"posted_by\":3, " +
-                        "\"message_text\": \"message test\", " +
-                        "\"time_posted_epoch\": 1669947792}"))
+                        "\"posted_by\":3," +
+                        "\"message_text\":\"message test\"," +
+                        "\"time_posted_epoch\":1669947792}"))
                 .header("Content-Type", "application/json")
                 .build();
-        HttpResponse response = webClient.send(postMessageRequest, HttpResponse.BodyHandlers.ofString());
-        int status = response.statusCode();
-        
-        Assert.assertEquals(400, status);        
-        Assert.assertEquals("", response.body().toString());
+
+        HttpResponse<String> response = webClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        Assert.assertEquals(400, response.statusCode());
+        Assert.assertEquals("", response.body());
     }
-
-
 }

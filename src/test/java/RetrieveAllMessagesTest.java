@@ -23,91 +23,78 @@ import Util.ConnectionUtil;
 import io.javalin.Javalin;
 
 public class RetrieveAllMessagesTest {
-    SocialMediaController socialMediaController;
-    HttpClient webClient;
-    ObjectMapper objectMapper;
-    Javalin app;
 
-    /**
-     * Before every test, reset the database, restart the Javalin app, and create a new webClient and ObjectMapper
-     * for interacting locally on the web.
-     * @throws InterruptedException
-     */
+    private SocialMediaController socialMediaController;
+    private HttpClient webClient;
+    private ObjectMapper objectMapper;
+    private Javalin app;
+
     @Before
-    public void setUp() throws InterruptedException {
+    public void initializeServer() throws InterruptedException {
         ConnectionUtil.resetTestDatabase();
         socialMediaController = new SocialMediaController();
         app = socialMediaController.startAPI();
         webClient = HttpClient.newHttpClient();
         objectMapper = new ObjectMapper();
         app.start(8080);
-        Thread.sleep(1000);
+        Thread.sleep(1000); // allow server to fully initialize
     }
 
     @After
-    public void tearDown() {
+    public void shutdownServer() {
         app.stop();
     }
 
-/**
-     * Sending an http request to GET localhost:8080/messages 
-     * 
-     * Expected Response:
-     *  Status Code: 200
-     *  Response Body: JSON represenation of a list of message objects
+    /**
+     * Test for retrieving all messages when messages exist in the database.
+     * Expects HTTP 200 and a list containing the expected message(s).
      */
     @Test
-    public void getAllMessagesMessagesAvailable() throws IOException, InterruptedException {
+    public void shouldReturnAllMessagesWhenPresent() throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("http://localhost:8080/messages"))
+                .GET()
                 .build();
-        HttpResponse response = webClient.send(request, HttpResponse.BodyHandlers.ofString());
-        int status = response.statusCode();
 
-        Assert.assertEquals(200, status);
+        HttpResponse<String> response = webClient.send(request, HttpResponse.BodyHandlers.ofString());
 
-        List<Message> expectedResult = new ArrayList<>();
-        expectedResult.add(new Message(1, 1, "test message 1", 1669947792));
-        List<Message> actualResult = objectMapper.readValue(response.body().toString(), new TypeReference<List<Message>>(){});
-        Assert.assertEquals(expectedResult, actualResult);
+        Assert.assertEquals(200, response.statusCode());
+
+        List<Message> expected = new ArrayList<>();
+        expected.add(new Message(1, 1, "test message 1", 1669947792));
+
+        List<Message> actual = objectMapper.readValue(response.body(), new TypeReference<>() {});
+        Assert.assertEquals(expected, actual);
     }
 
-
     /**
-     * Sending an http request to GET localhost:8080/messages with no mesages in db
-     * 
-     * Expected Response:
-     *  Status Code: 200
-     *  Response Body: JSON represenation of an empty list
+     * Test for retrieving all messages when database is empty.
+     * Deletes initial data and expects an empty list in the response.
      */
     @Test
-    public void getAllMessagesNoMessages() throws IOException, InterruptedException {
-        
-        removeInitialMessage();
+    public void shouldReturnEmptyListWhenNoMessagesExist() throws IOException, InterruptedException {
+        clearDefaultMessage();
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("http://localhost:8080/messages"))
+                .GET()
                 .build();
-        HttpResponse response = webClient.send(request, HttpResponse.BodyHandlers.ofString());
-        int status = response.statusCode();
 
-        Assert.assertEquals(200, status);
+        HttpResponse<String> response = webClient.send(request, HttpResponse.BodyHandlers.ofString());
 
-        List<Message> messages = objectMapper.readValue(response.body().toString(), new TypeReference<List<Message>>(){});
+        Assert.assertEquals(200, response.statusCode());
+
+        List<Message> messages = objectMapper.readValue(response.body(), new TypeReference<>() {});
         Assert.assertTrue(messages.isEmpty());
     }
 
-
-
-    private void removeInitialMessage(){
-        try {
-                Connection conn = ConnectionUtil.getConnection();
-                PreparedStatement ps = conn.prepareStatement("delete from message where message_id = ?");
-                ps.setInt(1, 1);
-                ps.executeUpdate();
+    private void clearDefaultMessage() {
+        try (Connection conn = ConnectionUtil.getConnection();
+             PreparedStatement stmt = conn.prepareStatement("DELETE FROM message WHERE message_id = ?")) {
+            stmt.setInt(1, 1);
+            stmt.executeUpdate();
         } catch (SQLException e) {
-                e.printStackTrace();
+            e.printStackTrace();
         }
     }
-
 }

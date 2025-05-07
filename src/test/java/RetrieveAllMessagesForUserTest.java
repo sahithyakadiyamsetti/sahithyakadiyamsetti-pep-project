@@ -20,73 +20,68 @@ import Util.ConnectionUtil;
 import io.javalin.Javalin;
 
 public class RetrieveAllMessagesForUserTest {
-    SocialMediaController socialMediaController;
-    HttpClient webClient;
-    ObjectMapper objectMapper;
-    Javalin app;
 
-    /**
-     * Before every test, reset the database, restart the Javalin app, and create a new webClient and ObjectMapper
-     * for interacting locally on the web.
-     * @throws InterruptedException
-     */
+    private SocialMediaController socialMediaController;
+    private HttpClient webClient;
+    private ObjectMapper objectMapper;
+    private Javalin app;
+
     @Before
-    public void setUp() throws InterruptedException {
+    public void initialize() throws InterruptedException {
         ConnectionUtil.resetTestDatabase();
         socialMediaController = new SocialMediaController();
         app = socialMediaController.startAPI();
         webClient = HttpClient.newHttpClient();
         objectMapper = new ObjectMapper();
         app.start(8080);
-        Thread.sleep(1000);
+        Thread.sleep(1000); // ensure server has time to fully start
     }
 
     @After
-    public void tearDown() {
+    public void cleanUp() {
         app.stop();
     }
 
     /**
-     * Sending an http request to GET localhost:8080/accounts/1/messages (messages exist for user) 
-     * 
-     * Expected Response:
-     *  Status Code: 200
-     *  Response Body: JSON representation of a list of messages
+     * Verifies retrieval of messages for a user with existing messages.
+     * Makes a GET request to /accounts/1/messages
+     * Expected: HTTP 200 and a JSON list with one message.
      */
     @Test
-    public void getAllMessagesFromUserMessageExists() throws IOException, InterruptedException {
+    public void shouldReturnMessagesWhenUserHasMessages() throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("http://localhost:8080/accounts/1/messages"))
+                .GET()
                 .build();
-        HttpResponse response = webClient.send(request, HttpResponse.BodyHandlers.ofString());
-        int status = response.statusCode();
 
-        Assert.assertEquals(200, status);
+        HttpResponse<String> response = webClient.send(request, HttpResponse.BodyHandlers.ofString());
 
-        List<Message> expectedResult = new ArrayList<>();
-        expectedResult.add(new Message(1, 1, "test message 1", 1669947792));
-        List<Message> actualResult = objectMapper.readValue(response.body().toString(), new TypeReference<List<Message>>(){});
-        Assert.assertEquals(expectedResult, actualResult);
+        Assert.assertEquals(200, response.statusCode());
+
+        List<Message> expectedMessages = new ArrayList<>();
+        expectedMessages.add(new Message(1, 1, "test message 1", 1669947792));
+
+        List<Message> actualMessages = objectMapper.readValue(response.body(), new TypeReference<>() {});
+        Assert.assertEquals(expectedMessages, actualMessages);
     }
 
     /**
-     * Sending an http request to GET localhost:8080/accounts/1/messages (messages does NOT exist for user) 
-     * 
-     * Expected Response:
-     *  Status Code: 200
-     *  Response Body:
+     * Verifies response when requesting messages for a user with no messages.
+     * Makes a GET request to /accounts/2/messages
+     * Expected: HTTP 200 and an empty list in the response.
      */
     @Test
-    public void getAllMessagesFromUserNoMessagesFound() throws IOException, InterruptedException {
+    public void shouldReturnEmptyListWhenNoMessagesForUser() throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("http://localhost:8080/accounts/2/messages"))
+                .GET()
                 .build();
-        HttpResponse response = webClient.send(request, HttpResponse.BodyHandlers.ofString());
-        int status = response.statusCode();
 
-        Assert.assertEquals(200, status);
+        HttpResponse<String> response = webClient.send(request, HttpResponse.BodyHandlers.ofString());
 
-        List<Message> actualResult = objectMapper.readValue(response.body().toString(), new TypeReference<List<Message>>(){});
-        Assert.assertTrue(actualResult.isEmpty());
+        Assert.assertEquals(200, response.statusCode());
+
+        List<Message> actualMessages = objectMapper.readValue(response.body(), new TypeReference<>() {});
+        Assert.assertTrue(actualMessages.isEmpty());
     }
 }
